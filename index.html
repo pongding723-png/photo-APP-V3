@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>專案照片產生器 - 一頁式 Web App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        
+        body {
+            background-color: #f8fafc;
+            font-family: 'Noto Sans TC', sans-serif;
+            touch-action: none;
+            overflow: hidden; /* 禁止全域捲動 */
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .app-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            overflow: hidden;
+        }
+
+        /* 預覽區域：自動填滿剩餘空間 */
+        #canvas-wrapper {
+            position: relative;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #f1f5f9;
+            flex: 1; /* 重要：自動伸展 */
+            overflow: hidden;
+            padding: 0.5rem;
+        }
+
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 8px;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            background-color: #fff;
+            touch-action: none;
+        }
+
+        /* 控制面板：手機版固定高度不捲動 */
+        .control-panel {
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            padding: 0.75rem; /* 壓縮間距 */
+            padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+            flex-shrink: 0; /* 禁止壓縮面板 */
+        }
+
+        @media (min-width: 1024px) {
+            .app-container {
+                flex-direction: row;
+                height: 90vh;
+                margin-top: 5vh;
+                border-radius: 24px;
+                box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+            }
+            .control-panel {
+                width: 380px;
+                height: 100%;
+                border-top: none;
+                border-left: 1px solid #e2e8f0;
+                padding: 1.5rem;
+            }
+        }
+
+        .btn-active:active {
+            transform: scale(0.96);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- 預覽畫布區 -->
+        <div id="canvas-wrapper">
+            <!-- 初始上傳提示 -->
+            <div id="placeholder" class="text-center p-4 space-y-2">
+                <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto animate-pulse">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <h2 class="text-lg font-black text-slate-800">專案照片產生器</h2>
+                <p class="text-slate-400 text-xs">請先選擇照片開始編輯</p>
+            </div>
+
+            <div id="edit-view" class="hidden w-full h-full flex flex-col items-center justify-center">
+                <canvas id="photoCanvas"></canvas>
+                <div class="mt-2 flex items-center justify-between w-full px-1">
+                    <span id="selectedBadge" class="bg-blue-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-md">編輯中 #1</span>
+                    <div class="text-[9px] text-slate-400 font-medium">1200x900 | 雙擊照片可換位</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 固定操作區 -->
+        <div class="control-panel">
+            <!-- 手機版隱藏大標題以節省空間 -->
+            <header class="hidden lg:block mb-4">
+                <h1 class="text-xl font-black text-slate-900 tracking-tight">照片產生器 <span class="text-blue-600">Pro</span></h1>
+            </header>
+
+            <div class="space-y-3 lg:space-y-6">
+                <!-- 1. 上傳 -->
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2">1. 上傳照片 (1-6張)</label>
+                    <input type="file" id="imageInput" accept="image/*" multiple 
+                           class="block w-full text-[10px] text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-blue-600 file:text-white cursor-pointer">
+                </div>
+
+                <!-- 2. 文字設計 -->
+                <div class="space-y-2 lg:space-y-4">
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase">2. 標題文字 (支援換行)</label>
+                    <textarea id="textInput" rows="2" placeholder="輸入文字內容..." 
+                           class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-medium resize-none"></textarea>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="space-y-1">
+                            <span class="text-[9px] font-bold text-slate-400 ml-1 uppercase">字體大小</span>
+                            <div class="flex gap-1">
+                                <button id="btnDecreaseFont" class="btn-active flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg font-black text-xs">A-</button>
+                                <button id="btnIncreaseFont" class="btn-active flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg font-black text-xs">A+</button>
+                            </div>
+                        </div>
+                        <div class="space-y-1">
+                            <span class="text-[9px] font-bold text-slate-400 ml-1 uppercase">文字位置</span>
+                            <div class="flex gap-1" id="posGroup">
+                                <button data-pos="top" class="pos-btn btn-active flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold text-[10px] shadow-sm">上</button>
+                                <button data-pos="middle" class="pos-btn btn-active flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg font-bold text-[10px]">中</button>
+                                <button data-pos="bottom" class="pos-btn btn-active flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg font-bold text-[10px]">下</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. 按鈕區 -->
+                <div class="pt-1 flex flex-col gap-2">
+                    <button id="downloadBtn" class="hidden btn-active w-full bg-slate-900 text-white font-black py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 tracking-widest uppercase text-xs">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        儲存成品圖片
+                    </button>
+                    <button id="btnClear" class="hidden btn-active w-full bg-red-50 text-red-600 font-bold py-2.5 rounded-xl text-[10px] flex items-center justify-center gap-2">
+                        清除所有內容
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI 版本標記 -->
+    <div class="fixed bottom-0.5 right-1 text-[7px] text-slate-300 font-mono pointer-events-none z-50">
+        1150413 V1 by HYH
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const textInput = document.getElementById('textInput');
+        const btnDecreaseFont = document.getElementById('btnDecreaseFont');
+        const btnIncreaseFont = document.getElementById('btnIncreaseFont');
+        const posButtons = document.querySelectorAll('.pos-btn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const btnClear = document.getElementById('btnClear');
+        const canvas = document.getElementById('photoCanvas');
+        const ctx = canvas.getContext('2d');
+        const placeholder = document.getElementById('placeholder');
+        const editView = document.getElementById('edit-view');
+        const selectedBadge = document.getElementById('selectedBadge');
+
+        let uploadedImages = [];
+        let selectedIndex = 0; 
+        let preClickSelectedIndex = -1;
+        let isDragging = false;
+        let lastX, lastY;
+        let lastDist = 0;
+        let currentFontSize = 60; 
+        let currentPosition = 'top'; 
+
+        let lastTapTime = 0;
+        let lastTapIdx = -1;
+
+        function getImageAverageColor(img) {
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = 1; tempCanvas.height = 1;
+            tempCtx.drawImage(img, 0, 0, 1, 1);
+            try {
+                const data = tempCtx.getImageData(0, 0, 1, 1).data;
+                return `rgb(${data[0]}, ${data[1]}, ${data[2]})`;
+            } catch (e) { return 'rgb(240, 240, 240)'; }
+        }
+
+        function updateUI() {
+            selectedBadge.textContent = `編輯中 #${selectedIndex + 1}`;
+        }
+
+        textInput.addEventListener('input', () => drawCollage(false));
+        btnDecreaseFont.addEventListener('click', () => { currentFontSize = Math.max(10, currentFontSize - 5); drawCollage(false); });
+        btnIncreaseFont.addEventListener('click', () => { currentFontSize = Math.min(300, currentFontSize + 5); drawCollage(false); });
+
+        posButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentPosition = btn.dataset.pos;
+                posButtons.forEach(b => {
+                    b.classList.remove('bg-blue-600', 'text-white', 'shadow-sm');
+                    b.classList.add('bg-slate-100', 'text-slate-700');
+                });
+                btn.classList.remove('bg-slate-100', 'text-slate-700');
+                btn.classList.add('bg-blue-600', 'text-white', 'shadow-sm');
+                drawCollage(false);
+            });
+        });
+
+        imageInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files).slice(0, 6);
+            if (files.length === 0) return;
+            uploadedImages = await Promise.all(files.map(file => {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const avgColor = getImageAverageColor(img);
+                        resolve({ img, scale: 1.0, offsetX: 0, offsetY: 0, bgColor: avgColor });
+                    };
+                    img.src = URL.createObjectURL(file);
+                });
+            }));
+            placeholder.classList.add('hidden');
+            editView.classList.remove('hidden');
+            downloadBtn.classList.remove('hidden');
+            btnClear.classList.remove('hidden');
+            selectedIndex = 0;
+            updateUI();
+            drawCollage(false);
+        });
+
+        btnClear.addEventListener('click', () => {
+            uploadedImages = [];
+            selectedIndex = 0;
+            preClickSelectedIndex = -1;
+            imageInput.value = '';
+            textInput.value = '';
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            placeholder.classList.remove('hidden');
+            editView.classList.add('hidden');
+            downloadBtn.classList.add('hidden');
+            btnClear.classList.add('hidden');
+        });
+
+        function getCellRect(index, count) {
+            const W = 1200; const H = 900;
+            if (count === 3) {
+                if (index === 0) return { x: 0, y: 0, w: W, h: H / 2 };
+                if (index === 1) return { x: 0, y: H / 2, w: W / 2, h: H / 2 };
+                if (index === 2) return { x: W / 2, y: H / 2, w: W / 2, h: H / 2 };
+            }
+            if (count === 5) {
+                if (index < 2) return { x: index * (W / 2), y: 0, w: W / 2, h: H / 2 };
+                else return { x: (index - 2) * (W / 3), y: H / 2, w: W / 3, h: H / 2 };
+            }
+            if (count === 2) return { x: 0, y: (index === 0 ? 0 : H / 2), w: W, h: H / 2 };
+            let rows = 1, cols = 1;
+            if (count === 4) { cols = 2; rows = 2; }
+            else if (count === 6) { cols = 3; rows = 2; }
+            const cellW = W / cols; const cellH = H / rows;
+            return { x: (index % cols) * cellW, y: Math.floor(index / cols) * cellH, w: cellW, h: cellH };
+        }
+
+        function getCanvasCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = (e.touches && e.touches.length > 0) ? e.touches[0].clientX : e.clientX;
+            const clientY = (e.touches && e.touches.length > 0) ? e.touches[0].clientY : e.clientY;
+            return {
+                x: (clientX - rect.left) * (canvas.width / rect.width),
+                y: (clientY - rect.top) * (canvas.height / rect.height)
+            };
+        }
+
+        function onStart(e) {
+            if (uploadedImages.length === 0) return;
+            const coords = getCanvasCoords(e);
+            const now = Date.now();
+            const count = uploadedImages.length;
+            let targetIdx = -1;
+            for (let i = 0; i < count; i++) {
+                const rect = getCellRect(i, count);
+                if (coords.x >= rect.x && coords.x <= rect.x + rect.w && coords.y >= rect.y && coords.y <= rect.y + rect.h) {
+                    targetIdx = i; break;
+                }
+            }
+            if (targetIdx !== -1) {
+                if (now - lastTapTime < 350 && targetIdx === lastTapIdx) {
+                    if (preClickSelectedIndex !== -1 && preClickSelectedIndex !== targetIdx) {
+                        const temp = uploadedImages[preClickSelectedIndex];
+                        uploadedImages[preClickSelectedIndex] = uploadedImages[targetIdx];
+                        uploadedImages[targetIdx] = temp;
+                        selectedIndex = targetIdx;
+                    }
+                } else {
+                    preClickSelectedIndex = selectedIndex;
+                    selectedIndex = targetIdx;
+                }
+                lastTapIdx = targetIdx; lastTapTime = now;
+                updateUI(); drawCollage(false);
+            }
+            isDragging = true; lastX = coords.x; lastY = coords.y;
+            if (e.touches && e.touches.length === 2) {
+                lastDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            }
+        }
+
+        function onMove(e) {
+            if (!isDragging || uploadedImages.length === 0) return;
+            if (e.target === canvas) e.preventDefault();
+            const data = uploadedImages[selectedIndex];
+            if (e.touches && e.touches.length === 2) {
+                const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                const delta = (dist - lastDist) / 100;
+                data.scale = Math.max(0.1, Math.min(10, data.scale + delta));
+                lastDist = dist;
+            } else {
+                const coords = getCanvasCoords(e);
+                data.offsetX += (coords.x - lastX);
+                data.offsetY += (coords.y - lastY);
+                lastX = coords.x; lastY = coords.y;
+            }
+            drawCollage(false);
+        }
+
+        canvas.addEventListener('mousedown', onStart);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', () => isDragging = false);
+        canvas.addEventListener('touchstart', onStart, { passive: false });
+        canvas.addEventListener('touchmove', onMove, { passive: false });
+        canvas.addEventListener('touchend', () => isDragging = false);
+
+        canvas.addEventListener('wheel', (e) => {
+            if (uploadedImages.length === 0) return;
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.05 : 0.05;
+            uploadedImages[selectedIndex].scale = Math.max(0.1, Math.min(10, uploadedImages[selectedIndex].scale + delta));
+            drawCollage(false);
+        }, { passive: false });
+
+        function drawCollage(isDownloading) {
+            if (uploadedImages.length === 0) return;
+            const targetWidth = 1200; const targetHeight = 900;
+            canvas.width = targetWidth; canvas.height = targetHeight;
+            const count = uploadedImages.length;
+            ctx.clearRect(0, 0, targetWidth, targetHeight);
+            uploadedImages.forEach((data, i) => {
+                const rect = getCellRect(i, count);
+                ctx.fillStyle = data.bgColor; ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+                const imgRatio = data.img.width / data.img.height;
+                const cellRatio = rect.w / rect.h;
+                let rw, rh;
+                if (imgRatio > cellRatio) { rh = rect.h * data.scale; rw = rh * imgRatio; }
+                else { rw = rect.w * data.scale; rh = rw / imgRatio; }
+                const dx = rect.x + (rect.w - rw) / 2 + data.offsetX;
+                const dy = rect.y + (rect.h - rh) / 2 + data.offsetY;
+                ctx.save(); ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
+                ctx.drawImage(data.img, dx, dy, rw, rh);
+                if (!isDownloading && selectedIndex === i) {
+                    ctx.strokeStyle = "#3b82f6"; ctx.lineWidth = 14; ctx.strokeRect(rect.x + 7, rect.y + 7, rect.w - 14, rect.h - 14);
+                }
+                ctx.restore();
+            });
+            const textValue = textInput.value || "";
+            if (textValue) {
+                const lines = textValue.split('\n');
+                const fontSize = currentFontSize; const lineHeight = fontSize * 1.25;
+                const padding = fontSize * 0.6; const overlayH = (lines.length * lineHeight) + (padding * 2);
+                let bgY = currentPosition === 'top' ? 0 : (currentPosition === 'middle' ? (targetHeight - overlayH) / 2 : targetHeight - overlayH);
+                ctx.fillStyle = "rgba(40, 40, 40, 0.65)"; ctx.fillRect(0, bgY, targetWidth, overlayH);
+                ctx.fillStyle = "#FFD700"; ctx.font = `bold ${fontSize}px 'Noto Sans TC', sans-serif`;
+                ctx.textAlign = "center"; ctx.textBaseline = "top";
+                lines.forEach((line, index) => { ctx.fillText(line, targetWidth / 2, bgY + padding + (index * lineHeight)); });
+            }
+        }
+
+        downloadBtn.addEventListener('click', () => {
+            drawCollage(true);
+            const dataURL = canvas.toDataURL('image/png', 1.0);
+            const link = document.createElement('a');
+            link.href = dataURL; link.download = `Project-${Date.now()}.png`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            drawCollage(false);
+        });
+    </script>
+</body>
+</html>
